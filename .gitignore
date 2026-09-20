@@ -1,0 +1,20 @@
+# Secrets
+.env
+
+# Python environment and generated files
+.venv/
+__pycache__/
+*.py[cod]
+
+# Streamlit local settings
+.streamlit/secrets.toml
+
+# Local vector database and temporary artifacts
+**/chroma_db/
+*.sqlite3
+
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

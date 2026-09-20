@@ -1,0 +1,13 @@
+streamlit
+python-dotenv
+langchain
+langchain-community
+langchain-chroma
+langchain-google-genai
+langchain-text-splitters
+pypdf
+python-docx
+python-pptx
+pandas
+beautifulsoup4
+youtube-transcript-api
