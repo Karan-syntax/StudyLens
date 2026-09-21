@@ -435,6 +435,61 @@ def apply_style() -> None:
               font-weight: 700;
               margin-bottom: 0.35rem;
           }
+
+          /* Hide Streamlit Community Cloud Badge, GitHub Fork Button & Footer */
+          footer {
+              visibility: hidden !important;
+              display: none !important;
+          }
+          header[data-testid="stHeader"] {
+              background: transparent !important;
+          }
+          .viewerBadge_container__r5tak,
+          .viewerBadge_link__1SuGQ,
+          [data-testid="stStatusWidget"],
+          [data-testid="manage-app-button"],
+          #MainMenu,
+          .stDeployButton,
+          [class*="viewerBadge"] {
+              display: none !important;
+              visibility: hidden !important;
+          }
+
+          /* Creator Profile Card in Sidebar */
+          .creator-card {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              padding: 0.75rem 0.9rem;
+              margin-top: 1.5rem;
+              border-radius: 14px;
+              background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.05) 100%);
+              border: 1px solid rgba(148, 163, 184, 0.2);
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+          }
+          .creator-avatar {
+              width: 42px;
+              height: 42px;
+              border-radius: 50%;
+              object-fit: cover;
+              border: 2px solid #6366f1;
+              box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+          }
+          .creator-info {
+              display: flex;
+              flex-direction: column;
+          }
+          .creator-name {
+              font-size: 0.88rem;
+              font-weight: 700;
+              color: inherit;
+              line-height: 1.25;
+          }
+          .creator-role {
+              font-size: 0.74rem;
+              opacity: 0.7;
+              font-weight: 500;
+          }
         </style>
         """,
         unsafe_allow_html=True,
@@ -681,6 +736,19 @@ with st.sidebar:
         st.session_state.source_chunks = []
         st.session_state.messages = []
         st.rerun()
+
+    st.markdown(
+        """
+        <div class="creator-card">
+            <img class="creator-avatar" src="https://avatars.githubusercontent.com/u/152914104?v=4" alt="Karan Kr Verma" />
+            <div class="creator-info">
+                <span class="creator-name">Karan Kr Verma</span>
+                <span class="creator-role">Creator & Developer</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 st.markdown(
     """
