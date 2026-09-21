@@ -703,12 +703,22 @@ with st.sidebar:
         source_url = st.text_input("Webpage URL", placeholder="https://example.com/article")
     else:
         source_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
-        st.caption("Public videos with available captions are supported.")
+        manual_notes = st.text_area(
+            "Or paste transcript / video notes manually (optional)",
+            placeholder="If YouTube restricts cloud servers or captions are unavailable, paste the transcript or summary here...",
+            height=110,
+        )
+        st.caption("Public videos with available captions are supported, or you can paste the text directly.")
 
     if st.button("⚡ Index & Process Source", type="primary", use_container_width=True):
         try:
             with st.spinner("Loading, chunking, and indexing your source..."):
-                documents, name = load_selected_source(source_kind, uploaded_file, source_url)
+                if source_kind == "YouTube video" and manual_notes.strip():
+                    from backend.rag_sources import _text_document
+                    documents = _text_document(manual_notes.strip(), source_url.strip() or "YouTube Notes", "YouTube")
+                    name = source_url.strip() or "YouTube Transcript/Notes"
+                else:
+                    documents, name = load_selected_source(source_kind, uploaded_file, source_url)
                 source_key = f"{source_kind}:{name}:{len(documents)}"
                 database, chunks = index_documents(documents, source_key)
             st.session_state.database = database
