@@ -103,6 +103,60 @@ def extract_youtube_id(url: str) -> str:
     raise ValueError("Enter a valid YouTube video URL.")
 
 
+def _fetch_with_ytdlp(url: str) -> list[dict]:
+    """Fallback transcript extraction via yt-dlp (resilient against IP blocks)."""
+    try:
+        import json
+        import urllib.request
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            subtitles = info.get("subtitles", {}) or {}
+            auto_subtitles = info.get("automatic_captions", {}) or {}
+
+            # Preferred order: manual en/hi, then auto en/hi, then any available
+            target_entry = None
+            for lang in ["en", "hi"]:
+                if lang in subtitles:
+                    target_entry = subtitles[lang]
+                    break
+            if not target_entry:
+                for lang in ["en", "hi"]:
+                    if lang in auto_subtitles:
+                        target_entry = auto_subtitles[lang]
+                        break
+            if not target_entry and subtitles:
+                target_entry = next(iter(subtitles.values()))
+            if not target_entry and auto_subtitles:
+                target_entry = next(iter(auto_subtitles.values()))
+
+            if not target_entry:
+                return []
+
+            # Find json3 format for timestamps or fallback to vtt/srv
+            json_url = next((f["url"] for f in target_entry if f.get("ext") == "json3"), None)
+            if json_url:
+                req = urllib.request.Request(json_url, headers={"User-Agent": "Mozilla/5.0"})
+                data = json.loads(urllib.request.urlopen(req, timeout=15).read())
+                items = []
+                for event in data.get("events", []):
+                    start = event.get("tStartMs", 0) / 1000.0
+                    segs = event.get("segs", [])
+                    line = "".join(s.get("utf8", "") for s in segs).strip()
+                    if line:
+                        items.append({"start": start, "text": line})
+                return items
+    except Exception:
+        pass
+    return []
+
+
 def load_youtube_transcript(url: str) -> list[Document]:
     """Turn an available YouTube transcript into timestamped documents.
 
@@ -112,16 +166,26 @@ def load_youtube_transcript(url: str) -> list[Document]:
     video_id = extract_youtube_id(url)
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("The YouTube video ID could not be identified.")
-    api = YouTubeTranscriptApi()
-    transcript_list = api.list(video_id)
+
+    transcript = None
+    # 1. Try youtube-transcript-api first
     try:
-        transcript = transcript_list.find_transcript(["en", "hi"])
-    except Exception:
-        available = list(transcript_list)
-        if not available:
-            raise ValueError("No transcript is available for this video.")
-        transcript = available[0]
-    transcript = transcript.fetch().to_raw_data()
+        api = YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
+        try:
+            matched_transcript = transcript_list.find_transcript(["en", "hi"])
+        except Exception:
+            available = list(transcript_list)
+            if not available:
+                raise ValueError("No transcript is available for this video.")
+            matched_transcript = available[0]
+        transcript = matched_transcript.fetch().to_raw_data()
+    except Exception as primary_error:
+        # 2. Fallback to yt-dlp if blocked or failed
+        transcript = _fetch_with_ytdlp(url)
+        if not transcript:
+            raise primary_error
+
     groups, text, start = [], [], None
     for item in transcript:
         item_start = float(item["start"])

@@ -499,8 +499,10 @@ def apply_style() -> None:
 @st.cache_resource(show_spinner=False)
 def get_models():
     key = os.getenv("GOOGLE_API_KEY")
+    if not key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+        key = st.secrets["GOOGLE_API_KEY"]
     if not key:
-        raise RuntimeError("GOOGLE_API_KEY is missing. Add it to your .env file.")
+        raise RuntimeError("GOOGLE_API_KEY is missing. Add it to your Streamlit Cloud Secrets or local .env file.")
     return (
         GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=key),
         ChatGoogleGenerativeAI(model="gemini-3.7-flash", google_api_key=key),
@@ -534,6 +536,7 @@ def index_documents(documents, source_key: str) -> tuple[Chroma, list]:
 
 def friendly_error(error: Exception, action: str = "index") -> str:
     message = str(error)
+    error_type = error.__class__.__name__
     if "429" in message or "RESOURCE_EXHAUSTED" in message:
         if action == "answer":
             return (
@@ -541,10 +544,20 @@ def friendly_error(error: Exception, action: str = "index") -> str:
                 "indexed—wait a few minutes, then ask your question again."
             )
         return "Google's embedding quota is currently exhausted. Wait a few minutes, then index the source again."
-    if "TranscriptsDisabled" in message or "NoTranscriptFound" in message:
-        return "This YouTube video does not provide a usable transcript. Try another public video with captions."
-    if "VideoUnavailable" in message:
-        return "This YouTube video is unavailable. Check the link and try again."
+    if (
+        "TranscriptsDisabled" in error_type
+        or "NoTranscriptFound" in error_type
+        or "Subtitles are disabled" in message
+        or "No transcript is available" in message
+    ):
+        return "This YouTube video has subtitles/transcripts disabled. Please try a video that has closed captions (CC) enabled."
+    if "IpBlocked" in error_type or "RequestBlocked" in error_type or "blocking requests from your IP" in message:
+        return (
+            "YouTube temporarily blocked transcript requests from this server IP. "
+            "If deployed, please try another video or wait a few minutes."
+        )
+    if "VideoUnavailable" in error_type or "VideoUnavailable" in message:
+        return "This YouTube video is unavailable or private. Check the link and try again."
     return f"The source could not be indexed: {message}"
 
 

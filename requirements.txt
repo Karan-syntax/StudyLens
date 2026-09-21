@@ -11,3 +11,4 @@ python-pptx
 pandas
 beautifulsoup4
 youtube-transcript-api
+yt-dlp
