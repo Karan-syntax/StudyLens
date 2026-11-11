@@ -528,8 +528,12 @@ def index_documents(documents, source_key: str) -> tuple[Chroma, list]:
         raise ValueError("No searchable text could be created from this source.")
     embeddings, _ = get_models()
     collection_name = f"study_{hashlib.sha256(source_key.encode()).hexdigest()[:20]}"
+    persist_directory = str(PROJECT_ROOT / "backend" / "chroma_db")
     database = Chroma.from_documents(
-        documents=chunks, embedding=embeddings, collection_name=collection_name
+        documents=chunks,
+        embedding=embeddings,
+        collection_name=collection_name,
+        persist_directory=persist_directory,
     )
     return database, chunks
 
@@ -551,10 +555,16 @@ def friendly_error(error: Exception, action: str = "index") -> str:
         or "No transcript is available" in message
     ):
         return "This YouTube video has subtitles/transcripts disabled. Please try a video that has closed captions (CC) enabled."
-    if "IpBlocked" in error_type or "RequestBlocked" in error_type or "blocking requests from your IP" in message:
+    if (
+        "IpBlocked" in error_type
+        or "RequestBlocked" in error_type
+        or "blocking requests from your IP" in message
+        or "YouTube blocked transcript access" in message
+    ):
         return (
-            "YouTube temporarily blocked transcript requests from this server IP. "
-            "If deployed, please try another video or wait a few minutes."
+            "YouTube blocked transcript access from this deployed server, or the video "
+            "has no public captions. Add SUPADATA_API_KEY to your deployment secrets for "
+            "reliable cloud transcripts, or paste its transcript or notes in the box above."
         )
     if "VideoUnavailable" in error_type or "VideoUnavailable" in message:
         return "This YouTube video is unavailable or private. Check the link and try again."
@@ -637,20 +647,10 @@ def show_sources(sources) -> None:
         return
     with st.expander(f"🔍 View Grounding Sources ({len(sources)} citations retrieved)"):
         for idx, source in enumerate(sources, 1):
-            url_link = f" • [Open source link ↗]({source['url']})" if source.get("url") else ""
-            st.markdown(
-                f"""
-                <div class='source-citation-card'>
-                    <div class='source-badge'>Citation {idx} • {source['label']}</div>
-                    <div style='font-size: 0.85rem; line-height: 1.5; color: var(--text-color); margin-top: 0.35rem;'>
-                        {source['text']}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if url_link:
-                st.markdown(url_link)
+            st.markdown(f"**Citation {idx} • {source['label']}**")
+            st.write(source["text"])
+            if source.get("url"):
+                st.markdown(f"[Open source link ↗]({source['url']})")
 
 
 def load_selected_source(kind: str, uploaded_file, url: str):
@@ -855,3 +855,4 @@ else:
                 st.caption(f"Note: {retrieval_note}")
             show_sources(sources)
         st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
+        

@@ -21,6 +21,8 @@ from langchain_chroma import Chroma
 load_dotenv()
 
 api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    raise RuntimeError("GOOGLE_API_KEY is missing. Add it to your .env file or environment before running this script.")
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -103,9 +105,24 @@ User Question:
 # 10. Send prompt to Gemini
 
 response = llm.invoke(prompt)
+response_text = response.content
+if isinstance(response_text, list):
+    parts = []
+    for item in response_text:
+        if isinstance(item, dict):
+            text = item.get("text")
+            if text:
+                parts.append(str(text))
+        elif item:
+            parts.append(str(item))
+    response_text = "\n".join(parts)
+elif isinstance(response_text, dict):
+    response_text = str(response_text.get("text", ""))
+else:
+    response_text = str(response_text)
 
 
 # 11. Display answer
 
 print("\nAnswer:")
-print(response.content[0]["text"])
+print(response_text.strip() or "I could not find the answer in the PDF.")

@@ -2,8 +2,10 @@
 
 import csv
 import io
+import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -157,6 +159,52 @@ def _fetch_with_ytdlp(url: str) -> list[dict]:
     return []
 
 
+def _fetch_with_supadata(url: str) -> list[dict]:
+    """Use an optional hosted transcript provider for reliable cloud deployments."""
+    api_key = os.getenv("SUPADATA_API_KEY")
+    if not api_key:
+        return []
+
+    headers = {"x-api-key": api_key}
+    response = requests.get(
+        "https://api.supadata.ai/v1/transcript",
+        headers=headers,
+        params={"url": url, "mode": "auto", "chunkSize": 1000},
+        timeout=45,
+    )
+    # Larger videos may be processed asynchronously. Poll briefly for completion.
+    if response.status_code == 202:
+        job_id = response.json().get("jobId")
+        if not job_id:
+            return []
+        for _ in range(12):
+            time.sleep(2)
+            response = requests.get(
+                f"https://api.supadata.ai/v1/transcript/{job_id}",
+                headers=headers,
+                timeout=20,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                if payload.get("status") in {None, "completed"}:
+                    break
+            elif response.status_code >= 400:
+                return []
+        else:
+            return []
+
+    if response.status_code != 200:
+        return []
+    content = response.json().get("content", [])
+    if isinstance(content, str):
+        return [{"start": 0, "text": content}]
+    return [
+        {"start": item.get("offset", 0) / 1000, "text": item.get("text", "")}
+        for item in content
+        if item.get("text", "").strip()
+    ]
+
+
 def load_youtube_transcript(url: str) -> list[Document]:
     """Turn an available YouTube transcript into timestamped documents.
 
@@ -167,24 +215,32 @@ def load_youtube_transcript(url: str) -> list[Document]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("The YouTube video ID could not be identified.")
 
-    transcript = None
-    # 1. Try youtube-transcript-api first
-    try:
-        api = YouTubeTranscriptApi()
-        transcript_list = api.list(video_id)
+    transcript = _fetch_with_supadata(url)
+    # 1. Prefer the configured production provider, then try free local fallbacks.
+    if transcript:
+        pass
+    else:
+        # 2. Try youtube-transcript-api first
         try:
-            matched_transcript = transcript_list.find_transcript(["en", "hi"])
-        except Exception:
-            available = list(transcript_list)
-            if not available:
-                raise ValueError("No transcript is available for this video.")
-            matched_transcript = available[0]
-        transcript = matched_transcript.fetch().to_raw_data()
-    except Exception as primary_error:
-        # 2. Fallback to yt-dlp if blocked or failed
-        transcript = _fetch_with_ytdlp(url)
-        if not transcript:
-            raise primary_error
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
+            try:
+                matched_transcript = transcript_list.find_transcript(["en", "hi"])
+            except Exception:
+                available = list(transcript_list)
+                if not available:
+                    raise ValueError("No transcript is available for this video.")
+                matched_transcript = available[0]
+            transcript = matched_transcript.fetch().to_raw_data()
+        except Exception as primary_error:
+            # 3. Fallback to yt-dlp if blocked or failed
+            transcript = _fetch_with_ytdlp(url)
+            if not transcript:
+                raise RuntimeError(
+                    "YouTube blocked transcript access from this deployed server, or this "
+                    "video has no public captions. Configure SUPADATA_API_KEY for reliable "
+                    "deployed video transcripts, or paste the transcript manually."
+                ) from primary_error
 
     groups, text, start = [], [], None
     for item in transcript:
@@ -212,10 +268,14 @@ def source_label(metadata: dict) -> str:
     """Return a concise, human-readable citation label."""
     source_type = metadata.get("source_type", "Source")
     if source_type == "PDF":
-        return f"PDF · page {metadata.get('page', 0) + 1}"
+        page = metadata.get("page")
+        page_number = int(page) + 1 if page is not None else 1
+        return f"PDF · page {page_number}"
     if source_type == "PPTX":
-        return f"Presentation · slide {metadata.get('slide', 1)}"
+        slide = metadata.get("slide")
+        slide_number = int(slide) if slide is not None else 1
+        return f"Presentation · slide {slide_number}"
     if source_type == "YouTube":
-        seconds = int(metadata.get("start_seconds", 0))
+        seconds = int(metadata.get("start_seconds", 0) or 0)
         return f"YouTube · {seconds // 60}:{seconds % 60:02d}"
     return f"{source_type} · {metadata.get('source', 'uploaded source')}"

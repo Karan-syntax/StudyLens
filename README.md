@@ -216,9 +216,13 @@ Create a `.env` file in the project root:
 
 ```env
 GOOGLE_API_KEY=your_google_gemini_api_key
+# Optional but recommended for reliable YouTube transcripts after cloud deployment
+SUPADATA_API_KEY=your_supadata_api_key
 ```
 
 Never commit `.env` to GitHub or share the API key publicly.
+
+For deployed YouTube support, add both values to your hosting platform's secret/environment-variable settings. `youtube-transcript-api` and `yt-dlp` are free local fallbacks, but YouTube can block shared cloud-server IPs. The optional Supadata fallback is designed for reliable hosted transcript retrieval and may require a paid plan depending on usage.
 
 ## Installation
 
